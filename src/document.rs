@@ -4,16 +4,32 @@ use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FileIdentity {
+    #[cfg(unix)]
     dev: u64,
+    #[cfg(unix)]
     ino: u64,
+    #[cfg(windows)]
+    volume: u32,
+    #[cfg(windows)]
+    file_index: u64,
 }
 
 impl FileIdentity {
+    #[cfg(unix)]
     fn from_metadata(meta: &fs::Metadata) -> Self {
         use std::os::unix::fs::MetadataExt;
         FileIdentity {
             dev: meta.dev(),
             ino: meta.ino(),
+        }
+    }
+
+    #[cfg(windows)]
+    fn from_metadata(meta: &fs::Metadata) -> Self {
+        use std::os::windows::fs::MetadataExt;
+        FileIdentity {
+            volume: meta.volume_serial_number().unwrap_or(0),
+            file_index: meta.file_index().unwrap_or(0),
         }
     }
 }
