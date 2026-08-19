@@ -1,3 +1,4 @@
+use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -16,6 +17,49 @@ fn default_auto_scroll_interval_ms() -> u64 {
     crate::app::AUTO_SCROLL_DEFAULT_INTERVAL.as_millis() as u64
 }
 
+fn default_search_bg() -> Color {
+    Color::Yellow
+}
+fn default_search_fg() -> Color {
+    Color::Black
+}
+fn default_status_bg() -> Color {
+    Color::DarkGray
+}
+fn default_status_fg() -> Color {
+    Color::White
+}
+
+/// User-overridable colors, read from a `[theme]` section in
+/// `config.toml`. Defaults match wless's original hardcoded colors
+/// exactly, so an unmodified config file changes nothing visually.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Theme {
+    #[serde(default = "default_search_bg")]
+    pub search_match_bg: Color,
+    #[serde(default = "default_search_fg")]
+    pub search_match_fg: Color,
+    #[serde(default = "default_status_bg")]
+    pub status_bg: Color,
+    #[serde(default = "default_status_fg")]
+    pub status_fg: Color,
+}
+
+impl Default for Theme {
+    // As with auto_scroll_interval_ms above: a derived Default would use
+    // Color's own default (Color::Reset) for every field, not our intended
+    // colors, since #[serde(default = "...")] only fires for a *missing
+    // key in an existing file*, never for "no file at all".
+    fn default() -> Self {
+        Theme {
+            search_match_bg: default_search_bg(),
+            search_match_fg: default_search_fg(),
+            status_bg: default_status_bg(),
+            status_fg: default_status_fg(),
+        }
+    }
+}
+
 /// The last-viewed line in one file, keyed by its path exactly as it was
 /// given on the command line -- no canonicalization or symlink resolution,
 /// so a different-but-equivalent path to the same file is treated as a
@@ -24,6 +68,11 @@ fn default_auto_scroll_interval_ms() -> u64 {
 pub struct RecentFile {
     pub path: PathBuf,
     pub line: usize,
+    /// Whether search was case-insensitive last time this file was closed.
+    /// `None` means never explicitly toggled -- follow the default
+    /// (case-insensitive) rather than locking to a remembered choice.
+    #[serde(default)]
+    pub ignore_case: Option<bool>,
 }
 
 /// Settings persisted across runs in `~/.config/wless/config.toml`:
@@ -40,6 +89,8 @@ pub struct Config {
     pub auto_scroll_interval_ms: u64,
     #[serde(default)]
     pub recent_files: Vec<RecentFile>,
+    #[serde(default)]
+    pub theme: Theme,
 }
 
 impl Default for Config {
@@ -52,6 +103,7 @@ impl Default for Config {
             search_history: Vec::new(),
             auto_scroll_interval_ms: default_auto_scroll_interval_ms(),
             recent_files: Vec::new(),
+            theme: Theme::default(),
         }
     }
 }
@@ -87,6 +139,15 @@ impl Config {
             .iter()
             .find(|rf| rf.path == path)
             .map(|rf| rf.line)
+    }
+
+    /// The remembered case-sensitivity choice for `path`, if it was ever
+    /// explicitly toggled for that exact path string.
+    pub fn ignore_case_for(&self, path: &std::path::Path) -> Option<bool> {
+        self.recent_files
+            .iter()
+            .find(|rf| rf.path == path)
+            .and_then(|rf| rf.ignore_case)
     }
 
     /// Best-effort save: a read-only home directory or similar shouldn't

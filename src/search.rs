@@ -1,5 +1,5 @@
 use crate::document::Document;
-use regex::bytes::Regex;
+use regex::bytes::{Regex, RegexBuilder};
 use std::ops::Range;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,8 +30,10 @@ pub struct Match {
     pub range: Range<usize>,
 }
 
-pub fn compile(pattern: &str) -> Result<Regex, regex::Error> {
-    Regex::new(pattern)
+pub fn compile(pattern: &str, ignore_case: bool) -> Result<Regex, regex::Error> {
+    RegexBuilder::new(pattern)
+        .case_insensitive(ignore_case)
+        .build()
 }
 
 /// Search forward starting just after `from_line`. The full line index

@@ -25,6 +25,7 @@ Search
   Enter (empty)       repeat last pattern
   Up / Down           browse search history
   n / N               repeat search (same / opposite direction)
+  i                   toggle case-sensitive search (default: insensitive)
   Esc                 cancel search / clear highlight
 
 Follow
@@ -59,6 +60,9 @@ pub fn draw(frame: &mut Frame, app: &AppState) {
 
 fn draw_text(frame: &mut Frame, app: &AppState, area: Rect) {
     let rows = visible_rows(&app.document, app.anchor, area.width, area.height);
+    let match_style = Style::default()
+        .bg(app.theme.search_match_bg)
+        .fg(app.theme.search_match_fg);
     let lines: Vec<Line> = rows
         .iter()
         .map(|r| {
@@ -66,7 +70,7 @@ fn draw_text(frame: &mut Frame, app: &AppState, area: Rect) {
             match &app.last_pattern {
                 Some(re) => {
                     let matches = search::find_all_in_line(re, app.document.line_bytes(r.line_idx));
-                    highlighted_line(&text, r.row.start, r.row.end, &matches)
+                    highlighted_line(&text, r.row.start, r.row.end, &matches, match_style)
                 }
                 None => Line::from(text[r.row.start..r.row.end].to_string()),
             }
@@ -104,8 +108,8 @@ fn highlighted_line(
     row_start: usize,
     row_end: usize,
     matches: &[std::ops::Range<usize>],
+    match_style: Style,
 ) -> Line<'static> {
-    let match_style = Style::default().bg(Color::Yellow).fg(Color::Black);
     let mut spans = Vec::new();
     let mut pos = row_start;
 
@@ -132,7 +136,15 @@ fn highlighted_line(
 
 fn draw_status(frame: &mut Frame, app: &AppState, area: Rect, text_area: Rect) {
     if let InputMode::Search(state) = &app.input_mode {
-        let text = format!("{}{}", state.direction.prompt_char(), state.query);
+        // Only show a case-sensitivity marker in the non-default state, so
+        // the common case (case-insensitive) stays visually uncluttered.
+        let case_marker = if app.ignore_case { "" } else { "(CS)" };
+        let text = format!(
+            "{}{}{}",
+            state.direction.prompt_char(),
+            case_marker,
+            state.query
+        );
         frame.render_widget(Paragraph::new(text), area);
         return;
     }
@@ -161,7 +173,9 @@ fn draw_status(frame: &mut Frame, app: &AppState, area: Rect, text_area: Rect) {
         };
         format!(" {}  ({}){}", app.filename, pos, auto)
     };
-    let style = Style::default().bg(Color::DarkGray).fg(Color::White);
+    let style = Style::default()
+        .bg(app.theme.status_bg)
+        .fg(app.theme.status_fg);
     let line = Line::from(Span::styled(text, style));
     frame.render_widget(Paragraph::new(line).style(style), area);
 }

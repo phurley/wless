@@ -22,6 +22,7 @@ pub enum Action {
     ToggleAutoScroll,
     AutoScrollFaster,
     AutoScrollSlower,
+    ToggleIgnoreCase,
 }
 
 /// Map a key event to an `Action`, decoupled from `AppState` so the keymap
@@ -55,6 +56,7 @@ pub fn map_key(key: KeyEvent) -> Option<Action> {
         (KeyCode::Char('a'), _) => Some(Action::ToggleAutoScroll),
         (KeyCode::Char('+'), _) | (KeyCode::Char('='), _) => Some(Action::AutoScrollFaster),
         (KeyCode::Char('-'), _) => Some(Action::AutoScrollSlower),
+        (KeyCode::Char('i'), _) => Some(Action::ToggleIgnoreCase),
         _ => None,
     }
 }

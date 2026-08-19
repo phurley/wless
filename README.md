@@ -8,10 +8,10 @@ from `less`:
 - **Reflows on resize** without losing your place: scroll position is
   tracked as a location in the file, not a screen row, so resizing the
   terminal keeps the same line pinned at the top.
-- **Follows file changes** (`F`), like `tail -f` / `less +F`, by polling
-  the file's size roughly every 150ms -- deliberately not OS-level file
-  change notifications, which proved unreliable in practice on at least
-  one real setup.
+- **Follows file changes** (`F`, or start with `-f`), like `tail -f` /
+  `less +F`, by polling the file's size roughly every 150ms --
+  deliberately not OS-level file change notifications, which proved
+  unreliable in practice on at least one real setup.
 
 It only views one file at a time, given as a path -- no stdin support.
 
@@ -38,6 +38,7 @@ cargo install --path .
 ```sh
 wless <file>
 wless -a <file>   # start with auto-scroll already running
+wless -f <file>   # start already following, like tail -f
 ```
 
 ## Keybindings
@@ -56,6 +57,7 @@ wless -a <file>   # start with auto-scroll already running
 | Enter on empty prompt   | repeat the last search pattern      |
 | `Up` / `Down` in prompt | browse search history               |
 | `n` / `N`               | repeat search (same / opposite dir) |
+| `i`                     | toggle case-sensitive search        |
 | `Esc`                   | cancel search / clear highlight     |
 | `F`                     | jump to end and follow file changes |
 | `a`                     | toggle auto-scroll (teleprompter)   |
@@ -79,6 +81,12 @@ help overlay is open, so it can't scroll the view out from under you
 while you type -- searching with `/`/`?`/`n`/`N` while auto-scrolling
 just jumps to the match and picks the pace back up from there.
 
+Search is case-insensitive by default; `i` toggles it (the search prompt
+shows a `(CS)` marker only while case-sensitive is active, to keep the
+common case uncluttered). The choice is remembered per file, the same way
+last-viewed position is (see Persisted settings below) -- toggling it for
+one file doesn't affect any other file's default.
+
 ## Design notes
 
 - Files are assumed to always fit comfortably in memory (even a
@@ -97,13 +105,29 @@ just jumps to the match and picks the pace back up from there.
 
 ## Persisted settings
 
-Search history, the last-used auto-scroll speed, and the last-viewed line
-of up to 50 recently-opened files are saved to
-`~/.config/wless/config.toml` on exit and reloaded on the next run.
-Reopening a file jumps back to where you left off if -- and only if --
-it's given by the exact same path string as before (no canonicalization
-or symlink resolution). Whether follow/auto-scroll happen to be on is not
-persisted; every run starts in plain view mode.
+Search history, the last-used auto-scroll speed, and (per file) the
+last-viewed line and case-sensitivity choice of up to 50 recently-opened
+files are saved to `~/.config/wless/config.toml` on exit and reloaded on
+the next run. Reopening a file restores its remembered state if -- and
+only if -- it's given by the exact same path string as before (no
+canonicalization or symlink resolution). Whether follow/auto-scroll
+happen to be on is not persisted; every run starts in plain view mode.
+
+### Theme
+
+Colors are configurable via a `[theme]` section in `config.toml` --
+add one by hand (defaults shown; any subset of keys can be overridden,
+using [ratatui's color
+names](https://docs.rs/ratatui/latest/ratatui/style/enum.Color.html) like
+`"Yellow"`, `"Cyan"`, `"LightBlue"`, or `{ Rgb = [255, 0, 0] }`):
+
+```toml
+[theme]
+search_match_bg = "Yellow"
+search_match_fg = "Black"
+status_bg = "DarkGray"
+status_fg = "White"
+```
 
 ## Building and testing locally
 

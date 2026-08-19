@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-08-19
+
+### Added
+
+- Search is case-insensitive by default now. `i` toggles case-sensitivity
+  (shown as a `(CS)` marker in the search prompt only while active, to
+  keep the common case uncluttered), and the choice is remembered per
+  file -- the same exact-path-match mechanism already used for last-viewed
+  line -- so toggling it for one file doesn't affect any other file's
+  default.
+- `-f`/`--follow` startup flag, parallel to the existing `-a`/
+  `--auto-scroll`: `wless -f logfile` jumps straight into follow mode
+  like `tail -f`.
+- Configurable colors via a `[theme]` section in `config.toml`
+  (`search_match_bg`/`_fg`, `status_bg`/`_fg`), defaulting to the exact
+  colors used before this change so an unmodified config file changes
+  nothing visually.
+
 ## [1.0.1] - 2026-08-19
 
 ### Fixed

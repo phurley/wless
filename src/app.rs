@@ -53,6 +53,14 @@ pub struct AppState {
     pub auto_scroll: bool,
     pub auto_scroll_interval: Duration,
     auto_scroll_next_tick: Instant,
+    /// Effective case-sensitivity for the next submitted search (default
+    /// case-insensitive). `ignore_case_override` is what gets persisted --
+    /// `None` unless explicitly toggled this file, so an untouched file
+    /// keeps following the default rather than locking to a remembered
+    /// choice.
+    pub ignore_case: bool,
+    ignore_case_override: Option<bool>,
+    pub theme: crate::config::Theme,
     /// Recent-file entries for files other than the one currently open,
     /// carried forward from the loaded config so saving doesn't clobber
     /// their remembered positions with just this session's own file.
@@ -85,15 +93,19 @@ impl AppState {
             auto_scroll: false,
             auto_scroll_interval: AUTO_SCROLL_DEFAULT_INTERVAL,
             auto_scroll_next_tick: Instant::now(),
+            ignore_case: true,
+            ignore_case_override: None,
+            theme: crate::config::Theme::default(),
             other_recent_files: Vec::new(),
         }
     }
 
     /// Apply persisted settings loaded from the config file: search
-    /// history, the last-used auto-scroll speed, and -- if this exact
-    /// path was seen before -- jumping to its last-viewed line. Anything
-    /// else session-specific (whether auto-scroll or follow are currently
-    /// on) is left untouched.
+    /// history, the last-used auto-scroll speed, the theme, and -- if this
+    /// exact path was seen before -- jumping to its last-viewed line and
+    /// restoring its remembered case-sensitivity choice. Anything else
+    /// session-specific (whether auto-scroll or follow are currently on)
+    /// is left untouched.
     pub fn apply_config(&mut self, config: &crate::config::Config) {
         self.search_history = config.search_history.clone();
         // Keep the most recent entries (the tail) if the file has more
@@ -106,6 +118,7 @@ impl AppState {
         self.auto_scroll_interval = config
             .auto_scroll_interval()
             .clamp(AUTO_SCROLL_MIN_INTERVAL, AUTO_SCROLL_MAX_INTERVAL);
+        self.theme = config.theme.clone();
 
         self.other_recent_files = config
             .recent_files
@@ -119,6 +132,10 @@ impl AppState {
                 sub_row: 0,
             };
         }
+        if let Some(ignore_case) = config.ignore_case_for(&self.path) {
+            self.ignore_case = ignore_case;
+            self.ignore_case_override = Some(ignore_case);
+        }
     }
 
     /// Snapshot the settings worth persisting, for saving on exit.
@@ -127,6 +144,7 @@ impl AppState {
         recent_files.push(crate::config::RecentFile {
             path: self.path.clone(),
             line: self.anchor.line_idx,
+            ignore_case: self.ignore_case_override,
         });
         let excess = recent_files
             .len()
@@ -137,6 +155,7 @@ impl AppState {
             search_history: self.search_history.clone(),
             auto_scroll_interval_ms: self.auto_scroll_interval.as_millis() as u64,
             recent_files,
+            theme: self.theme.clone(),
         }
     }
 
@@ -218,16 +237,22 @@ impl AppState {
             }
             Action::ClearSearch => self.last_pattern = None,
             Action::ToggleHelp => self.input_mode = InputMode::Help,
-            Action::Follow => {
-                self.following = true;
-                self.anchor = view::goto_bottom(&self.document, self.width, self.text_height());
-            }
+            Action::Follow => self.start_follow(),
             Action::ToggleAutoScroll => {
                 let on = !self.auto_scroll;
                 self.set_auto_scroll(on);
             }
             Action::AutoScrollFaster => self.adjust_auto_scroll_speed(true),
             Action::AutoScrollSlower => self.adjust_auto_scroll_speed(false),
+            Action::ToggleIgnoreCase => {
+                self.ignore_case = !self.ignore_case;
+                self.ignore_case_override = Some(self.ignore_case);
+                self.status_message = Some(if self.ignore_case {
+                    "Case-insensitive search".to_string()
+                } else {
+                    "Case-sensitive search".to_string()
+                });
+            }
         }
         self.dirty = true;
     }
@@ -239,6 +264,13 @@ impl AppState {
         if on {
             self.schedule_next_auto_scroll_tick();
         }
+    }
+
+    /// Jump to the end of the file and start following, e.g. from the `F`
+    /// key or the `--follow` startup flag.
+    pub fn start_follow(&mut self) {
+        self.following = true;
+        self.anchor = view::goto_bottom(&self.document, self.width, self.text_height());
     }
 
     fn adjust_auto_scroll_speed(&mut self, faster: bool) {
@@ -435,7 +467,7 @@ impl AppState {
             return;
         }
 
-        match search::compile(pattern) {
+        match search::compile(pattern, self.ignore_case) {
             Ok(re) => {
                 self.last_pattern = Some(re);
                 self.last_direction = direction;

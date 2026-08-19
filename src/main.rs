@@ -38,6 +38,10 @@ struct Cli {
     #[arg(short = 'a', long = "auto-scroll")]
     auto_scroll: bool,
 
+    /// Start already following the file, like `tail -f`.
+    #[arg(short = 'f', long = "follow")]
+    follow: bool,
+
     /// Print version information.
     #[arg(short = 'v', long = "version", action = ArgAction::Version)]
     version: (),
@@ -60,6 +64,9 @@ fn main() -> anyhow::Result<()> {
     app.apply_config(&config);
     if cli.auto_scroll {
         app.set_auto_scroll(true);
+    }
+    if cli.follow {
+        app.start_follow();
     }
 
     while !app.should_quit {
