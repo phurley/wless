@@ -48,3 +48,37 @@ jobs:
           target: ${{ matrix.target }}
           archive: wless-$tag-$target
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  update-homebrew-tap:
+    needs: build
+    runs-on: ubuntu-latest
+    # A failure here (e.g. the tap token isn't configured yet) shouldn't
+    # mark the whole release as failed -- the actual binaries above are
+    # what matters most, this is a nice-to-have sync.
+    continue-on-error: true
+    steps:
+      - name: Checkout wless (for the generator script)
+        uses: actions/checkout@v4
+
+      - name: Checkout tap
+        uses: actions/checkout@v4
+        with:
+          repository: phurley/homebrew-wless
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Regenerate formula
+        run: python3 .github/scripts/update_homebrew_formula.py "${{ github.ref_name }}" tap/Formula/wless.rb
+
+      - name: Commit and push if changed
+        run: |
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/wless.rb
+          if git diff --cached --quiet; then
+            echo "Formula unchanged"
+          else
+            git commit -m "wless ${{ github.ref_name }}"
+            git push
+          fi

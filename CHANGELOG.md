@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-08-19
+
+### Added
+
+- Homebrew install support: `brew install phurley/wless/wless`, via a new
+  [homebrew-wless](https://github.com/phurley/homebrew-wless) tap. The
+  release workflow now regenerates and pushes the tap's formula (with
+  freshly-computed checksums for all four macOS/Linux release assets)
+  automatically whenever a new version is tagged.
+
 ## [1.3.0] - 2026-08-19
 
 ### Added

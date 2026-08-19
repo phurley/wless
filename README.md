@@ -17,7 +17,13 @@ It only views one file at a time, given as a path -- no stdin support.
 
 ## Install
 
-Download a prebuilt binary from the
+macOS or Linux, via [Homebrew](https://brew.sh):
+
+```sh
+brew install phurley/wless/wless
+```
+
+Or download a prebuilt binary from the
 [releases page](https://github.com/phurley/wless/releases), or build from
 source with Cargo:
 
