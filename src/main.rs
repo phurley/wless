@@ -1,4 +1,5 @@
 mod app;
+mod config;
 mod document;
 mod follow;
 mod input;
@@ -40,9 +41,12 @@ fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|| cli.file.to_string_lossy().to_string());
     let watcher = follow::watch(&cli.file)?;
 
+    let config = config::Config::load();
+
     let mut guard = TerminalGuard::new()?;
     let size = guard.terminal.size()?;
     let mut app = AppState::new(document, cli.file, filename, size.width, size.height);
+    app.apply_config(&config);
 
     while !app.should_quit {
         if app.dirty {
@@ -77,6 +81,10 @@ fn main() -> anyhow::Result<()> {
             app.auto_scroll_tick();
         }
     }
+
+    // Best-effort: a failure to save (e.g. read-only home directory)
+    // shouldn't be treated as an error on an otherwise-normal exit.
+    let _ = app.to_config().save();
 
     Ok(())
 }

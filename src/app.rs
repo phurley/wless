@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 /// interval between one-line advances -- a *smaller* interval is faster.
 const AUTO_SCROLL_MIN_INTERVAL: Duration = Duration::from_millis(40);
 const AUTO_SCROLL_MAX_INTERVAL: Duration = Duration::from_millis(3000);
-const AUTO_SCROLL_DEFAULT_INTERVAL: Duration = Duration::from_millis(500);
+pub const AUTO_SCROLL_DEFAULT_INTERVAL: Duration = Duration::from_millis(500);
 /// Multiplicative step so speed changes feel proportional at both the fast
 /// and slow ends of the range, rather than a fixed-ms step that's a huge
 /// relative jump when fast and imperceptible when slow.
@@ -81,6 +81,32 @@ impl AppState {
             auto_scroll: false,
             auto_scroll_interval: AUTO_SCROLL_DEFAULT_INTERVAL,
             auto_scroll_next_tick: Instant::now(),
+        }
+    }
+
+    /// Apply persisted settings loaded from the config file. Deliberately
+    /// leaves session-specific state (scroll position, whether auto-scroll
+    /// or follow are currently on) untouched -- only search history and
+    /// the last-used auto-scroll speed carry over between runs.
+    pub fn apply_config(&mut self, config: &crate::config::Config) {
+        self.search_history = config.search_history.clone();
+        // Keep the most recent entries (the tail) if the file has more
+        // than the cap -- history is ordered oldest-first.
+        let excess = self
+            .search_history
+            .len()
+            .saturating_sub(crate::config::MAX_SEARCH_HISTORY);
+        self.search_history.drain(..excess);
+        self.auto_scroll_interval = config
+            .auto_scroll_interval()
+            .clamp(AUTO_SCROLL_MIN_INTERVAL, AUTO_SCROLL_MAX_INTERVAL);
+    }
+
+    /// Snapshot the settings worth persisting, for saving on exit.
+    pub fn to_config(&self) -> crate::config::Config {
+        crate::config::Config {
+            search_history: self.search_history.clone(),
+            auto_scroll_interval_ms: self.auto_scroll_interval.as_millis() as u64,
         }
     }
 
@@ -340,6 +366,9 @@ impl AppState {
                 self.last_direction = direction;
                 if self.search_history.last().map(String::as_str) != Some(pattern) {
                     self.search_history.push(pattern.to_string());
+                    if self.search_history.len() > crate::config::MAX_SEARCH_HISTORY {
+                        self.search_history.remove(0);
+                    }
                 }
                 self.run_search(direction);
             }

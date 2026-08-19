@@ -55,6 +55,8 @@ wless <file>
 | `n` / `N`               | repeat search (same / opposite dir) |
 | `Esc`                   | cancel search / clear highlight     |
 | `F`                     | jump to end and follow file changes |
+| `a`                     | toggle auto-scroll (teleprompter)   |
+| `+` / `-`               | auto-scroll speed up / down         |
 | `Ctrl-L` / `r`          | force redraw                        |
 | `h` / `H`               | toggle help overlay                 |
 | `q`                     | quit                                |
@@ -62,6 +64,12 @@ wless <file>
 Pressing any movement key that scrolls away from the bottom (up, page up,
 half page up, go to top, or starting a new search) cancels follow mode,
 matching `less +F` -- press `F` again to resume.
+
+While auto-scrolling, `Up`/`Down` do double duty: they still move a line
+as usual, but also nudge the speed down/up, so a manual nudge is coupled
+to the running pace instead of feeling disconnected from it. Reaching the
+current end of file while auto-scrolling hands off to follow mode, so it
+keeps riding newly appended content.
 
 ## Design notes
 
@@ -75,6 +83,14 @@ matching `less +F` -- press `F` again to resume.
   detected and triggers a full reload instead.
 - Search uses `regex::bytes::Regex` so it works correctly on non-UTF-8
   content without a decode step; displayed text is a lossy UTF-8 decode.
+
+## Persisted settings
+
+Search history and the last-used auto-scroll speed are saved to
+`~/.config/wless/config.toml` on exit and reloaded on the next run.
+Session-specific state -- which file is open, scroll position, and whether
+follow/auto-scroll happen to be on -- is not persisted; every run starts
+in plain view mode.
 
 ## Building and testing locally
 
