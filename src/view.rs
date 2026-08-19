@@ -20,13 +20,6 @@ impl ScrollAnchor {
     }
 }
 
-#[allow(dead_code)] // wired up in the follow-mode milestone
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ScrollMode {
-    Fixed,
-    BottomFollow,
-}
-
 /// One row worth of rendered content: which logical line it came from, and
 /// the byte range within that line's text.
 pub struct RenderedRow {

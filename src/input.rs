@@ -17,6 +17,8 @@ pub enum Action {
     RepeatSearchSame,
     RepeatSearchOpposite,
     ClearSearch,
+    ToggleHelp,
+    Follow,
 }
 
 /// Map a key event to an `Action`, decoupled from `AppState` so the keymap
@@ -45,6 +47,8 @@ pub fn map_key(key: KeyEvent) -> Option<Action> {
         (KeyCode::Char('n'), _) => Some(Action::RepeatSearchSame),
         (KeyCode::Char('N'), _) => Some(Action::RepeatSearchOpposite),
         (KeyCode::Esc, _) => Some(Action::ClearSearch),
+        (KeyCode::Char('h'), _) | (KeyCode::Char('H'), _) => Some(Action::ToggleHelp),
+        (KeyCode::Char('F'), _) => Some(Action::Follow),
         _ => None,
     }
 }

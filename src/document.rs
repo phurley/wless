@@ -20,7 +20,6 @@ impl FileIdentity {
 
 /// Whether the on-disk file grew in place, or was rotated/truncated and
 /// needs a full reload.
-#[allow(dead_code)] // wired up in the follow-mode milestone
 pub enum RefreshOutcome {
     Unchanged,
     Appended,
@@ -33,7 +32,6 @@ pub enum RefreshOutcome {
 pub struct Document {
     buf: Vec<u8>,
     line_starts: Vec<u64>,
-    #[allow(dead_code)] // read by refresh_append/reload in the follow-mode milestone
     file_id: FileIdentity,
 }
 
@@ -71,7 +69,6 @@ impl Document {
     /// appending only the new tail bytes and extending the index. Returns
     /// `NeedsReload` if the caller should call `reload` instead (the file
     /// shrank or its identity changed, indicating truncation/rotation).
-    #[allow(dead_code)] // wired up in the follow-mode milestone
     pub fn refresh_append(&mut self, path: &Path) -> anyhow::Result<RefreshOutcome> {
         let meta = fs::metadata(path)?;
         let new_id = FileIdentity::from_metadata(&meta);
@@ -91,9 +88,16 @@ impl Document {
         let mut tail = Vec::with_capacity((new_len - old_len) as usize);
         f.read_to_end(&mut tail)?;
 
-        // The previously-indexed region is guaranteed newline-free past the
-        // last recorded line start (otherwise it would already have been
-        // split), so it's enough to scan just the newly appended tail.
+        // If the file previously ended with a complete line (its last byte
+        // was '\n'), the appended bytes begin an entirely new logical line
+        // that needs its own line_starts entry -- otherwise we're just
+        // continuing whatever unterminated line was already the last entry
+        // (whose start offset is already recorded, so no push needed here).
+        let prev_ended_with_newline = old_len > 0 && self.buf.last() == Some(&b'\n');
+        if prev_ended_with_newline {
+            self.line_starts.push(old_len);
+        }
+
         self.buf.extend_from_slice(&tail);
         for pos in memchr::memchr_iter(b'\n', &tail) {
             let next = old_len + pos as u64 + 1;
@@ -105,7 +109,6 @@ impl Document {
         Ok(RefreshOutcome::Appended)
     }
 
-    #[allow(dead_code)] // wired up in the follow-mode milestone
     pub fn reload(&mut self, path: &Path) -> anyhow::Result<()> {
         *self = Document::open(path)?;
         Ok(())
@@ -150,14 +153,22 @@ impl Document {
         self.line_starts[idx]
     }
 
-    #[allow(dead_code)] // wired up in the search milestone
-    pub fn line_index_for_offset(&self, offset: u64) -> usize {
-        self.line_starts
-            .partition_point(|&s| s <= offset)
-            .saturating_sub(1)
-    }
-
     pub fn last_line_index(&self) -> usize {
         self.line_count().saturating_sub(1)
+    }
+
+    /// Round a byte offset within a line down to the nearest UTF-8 char
+    /// boundary. Regex matches on `line_bytes` (raw bytes) aren't
+    /// guaranteed to land on char boundaries of the lossily-decoded
+    /// `line_text` -- e.g. a zero-width match from an empty/optional
+    /// pattern can fall mid-character -- so callers that use a match
+    /// offset to index into `line_text` must snap it first.
+    pub fn floor_char_boundary(&self, line_idx: usize, offset: usize) -> usize {
+        let text = self.line_text(line_idx);
+        let mut offset = offset.min(text.len());
+        while offset > 0 && !text.is_char_boundary(offset) {
+            offset -= 1;
+        }
+        offset
     }
 }
