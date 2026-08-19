@@ -66,6 +66,24 @@ fn row_count(doc: &Document, line_idx: usize, width: u16) -> usize {
     wrap_line(&doc.line_text(line_idx), width).len().max(1)
 }
 
+/// Which wrapped visual row of a logical line contains the given byte
+/// offset -- used to land a search match on-screen even when it's deep
+/// inside a long, heavily-wrapped line rather than always at `sub_row: 0`.
+pub fn sub_row_for_offset(
+    doc: &Document,
+    line_idx: usize,
+    byte_offset: usize,
+    width: u16,
+) -> usize {
+    let rows = wrap_line(&doc.line_text(line_idx), width);
+    for (i, r) in rows.iter().enumerate() {
+        if byte_offset < r.end || i == rows.len() - 1 {
+            return i;
+        }
+    }
+    0
+}
+
 pub fn scroll_down_lines(
     doc: &Document,
     anchor: ScrollAnchor,

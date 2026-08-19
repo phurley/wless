@@ -2,11 +2,12 @@ mod app;
 mod document;
 mod input;
 mod render;
+mod search;
 mod terminal;
 mod view;
 mod wrap;
 
-use app::AppState;
+use app::{AppState, InputMode};
 use clap::Parser;
 use crossterm::event::{self, Event};
 use document::Document;
@@ -42,11 +43,14 @@ fn main() -> anyhow::Result<()> {
         }
         if event::poll(Duration::from_millis(250))? {
             match event::read()? {
-                Event::Key(key) => {
-                    if let Some(action) = input::map_key(key) {
-                        app.handle_action(action);
+                Event::Key(key) => match app.input_mode {
+                    InputMode::Search { .. } => app.handle_search_key(key),
+                    InputMode::Normal => {
+                        if let Some(action) = input::map_key(key) {
+                            app.handle_action(action);
+                        }
                     }
-                }
+                },
                 Event::Resize(w, h) => app.handle_resize(w, h),
                 _ => {}
             }

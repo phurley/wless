@@ -7,13 +7,21 @@ pub enum Action {
     LineUp,
     PageDown,
     PageUp,
+    HalfPageDown,
+    HalfPageUp,
     GotoTop,
     GotoBottom,
     Redraw,
+    SearchForward,
+    SearchBackward,
+    RepeatSearchSame,
+    RepeatSearchOpposite,
+    ClearSearch,
 }
 
 /// Map a key event to an `Action`, decoupled from `AppState` so the keymap
-/// itself is testable in isolation.
+/// itself is testable in isolation. Only used in normal mode -- search text
+/// entry is handled separately since it needs raw characters.
 pub fn map_key(key: KeyEvent) -> Option<Action> {
     match (key.code, key.modifiers) {
         (KeyCode::Char('q'), _) => Some(Action::Quit),
@@ -21,6 +29,8 @@ pub fn map_key(key: KeyEvent) -> Option<Action> {
         (KeyCode::Down, _) | (KeyCode::Char('j'), _) | (KeyCode::Enter, _) => {
             Some(Action::LineDown)
         }
+        (KeyCode::Char('d'), KeyModifiers::CONTROL) => Some(Action::HalfPageDown),
+        (KeyCode::Char('u'), KeyModifiers::CONTROL) => Some(Action::HalfPageUp),
         (KeyCode::Char(' '), _) | (KeyCode::Char('f'), _) | (KeyCode::PageDown, _) => {
             Some(Action::PageDown)
         }
@@ -30,6 +40,11 @@ pub fn map_key(key: KeyEvent) -> Option<Action> {
         (KeyCode::Char('l'), KeyModifiers::CONTROL) | (KeyCode::Char('r'), _) => {
             Some(Action::Redraw)
         }
+        (KeyCode::Char('/'), _) => Some(Action::SearchForward),
+        (KeyCode::Char('?'), _) => Some(Action::SearchBackward),
+        (KeyCode::Char('n'), _) => Some(Action::RepeatSearchSame),
+        (KeyCode::Char('N'), _) => Some(Action::RepeatSearchOpposite),
+        (KeyCode::Esc, _) => Some(Action::ClearSearch),
         _ => None,
     }
 }
