@@ -5,6 +5,17 @@ use crate::view::{self, ScrollAnchor};
 use crossterm::event::{KeyCode, KeyEvent};
 use regex::bytes::Regex;
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
+
+/// Auto-scroll (teleprompter) speed bounds and step, expressed as the
+/// interval between one-line advances -- a *smaller* interval is faster.
+const AUTO_SCROLL_MIN_INTERVAL: Duration = Duration::from_millis(40);
+const AUTO_SCROLL_MAX_INTERVAL: Duration = Duration::from_millis(3000);
+const AUTO_SCROLL_DEFAULT_INTERVAL: Duration = Duration::from_millis(500);
+/// Multiplicative step so speed changes feel proportional at both the fast
+/// and slow ends of the range, rather than a fixed-ms step that's a huge
+/// relative jump when fast and imperceptible when slow.
+const AUTO_SCROLL_STEP_FACTOR: f64 = 0.85;
 
 /// State of the search text-entry prompt (open via `/` or `?`).
 pub struct SearchInput {
@@ -39,6 +50,9 @@ pub struct AppState {
     pub search_history: Vec<String>,
     pub status_message: Option<String>,
     pub following: bool,
+    pub auto_scroll: bool,
+    pub auto_scroll_interval: Duration,
+    auto_scroll_next_tick: Instant,
 }
 
 impl AppState {
@@ -64,6 +78,9 @@ impl AppState {
             search_history: Vec::new(),
             status_message: None,
             following: false,
+            auto_scroll: false,
+            auto_scroll_interval: AUTO_SCROLL_DEFAULT_INTERVAL,
+            auto_scroll_next_tick: Instant::now(),
         }
     }
 
@@ -76,11 +93,22 @@ impl AppState {
         match action {
             Action::Quit => self.should_quit = true,
             Action::LineDown => {
-                self.anchor = view::scroll_down_lines(&self.document, self.anchor, self.width, 1)
+                self.anchor = view::scroll_down_lines(&self.document, self.anchor, self.width, 1);
+                // While auto-scrolling, Up/Down double as speed nudges: Down
+                // both advances a line and speeds the pace up, Up both backs
+                // up a line and eases it back down -- an explicit request,
+                // since a plain forward/back nudge alone felt disconnected
+                // from the running pace.
+                if self.auto_scroll {
+                    self.adjust_auto_scroll_speed(true);
+                }
             }
             Action::LineUp => {
                 self.following = false;
-                self.anchor = view::scroll_up_lines(&self.document, self.anchor, self.width, 1)
+                self.anchor = view::scroll_up_lines(&self.document, self.anchor, self.width, 1);
+                if self.auto_scroll {
+                    self.adjust_auto_scroll_speed(false);
+                }
             }
             Action::PageDown => {
                 self.anchor =
@@ -126,7 +154,60 @@ impl AppState {
                 self.following = true;
                 self.anchor = view::goto_bottom(&self.document, self.width, self.text_height());
             }
+            Action::ToggleAutoScroll => {
+                self.auto_scroll = !self.auto_scroll;
+                if self.auto_scroll {
+                    self.schedule_next_auto_scroll_tick();
+                }
+            }
+            Action::AutoScrollFaster => self.adjust_auto_scroll_speed(true),
+            Action::AutoScrollSlower => self.adjust_auto_scroll_speed(false),
         }
+        self.dirty = true;
+    }
+
+    fn adjust_auto_scroll_speed(&mut self, faster: bool) {
+        let factor = if faster {
+            AUTO_SCROLL_STEP_FACTOR
+        } else {
+            1.0 / AUTO_SCROLL_STEP_FACTOR
+        };
+        let new_ms = (self.auto_scroll_interval.as_millis() as f64 * factor).round() as u64;
+        self.auto_scroll_interval =
+            Duration::from_millis(new_ms).clamp(AUTO_SCROLL_MIN_INTERVAL, AUTO_SCROLL_MAX_INTERVAL);
+        if self.auto_scroll {
+            self.schedule_next_auto_scroll_tick();
+        }
+    }
+
+    fn schedule_next_auto_scroll_tick(&mut self) {
+        self.auto_scroll_next_tick = Instant::now() + self.auto_scroll_interval;
+    }
+
+    /// Whether the auto-scroll timer has elapsed and it's time to advance
+    /// one line. Called from the main loop each iteration.
+    pub fn auto_scroll_due(&self, now: Instant) -> bool {
+        self.auto_scroll && now >= self.auto_scroll_next_tick
+    }
+
+    /// How long until the next auto-scroll tick, for the main loop to use
+    /// as its event-poll timeout so ticks stay punctual. `None` when
+    /// auto-scroll is off.
+    pub fn auto_scroll_wake_deadline(&self) -> Option<Instant> {
+        self.auto_scroll.then_some(self.auto_scroll_next_tick)
+    }
+
+    /// Advance one line and reschedule. Once this reaches the current end
+    /// of file, it hands off to follow mode so newly appended content keeps
+    /// the teleprompter moving -- auto-scroll's own timer has no way to
+    /// know about future appends, but follow mode is driven by file-change
+    /// events instead, so it picks up seamlessly.
+    pub fn auto_scroll_tick(&mut self) {
+        self.anchor = view::scroll_down_lines(&self.document, self.anchor, self.width, 1);
+        if view::is_at_bottom(&self.document, self.anchor, self.width, self.text_height()) {
+            self.following = true;
+        }
+        self.schedule_next_auto_scroll_tick();
         self.dirty = true;
     }
 

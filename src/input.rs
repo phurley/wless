@@ -19,6 +19,9 @@ pub enum Action {
     ClearSearch,
     ToggleHelp,
     Follow,
+    ToggleAutoScroll,
+    AutoScrollFaster,
+    AutoScrollSlower,
 }
 
 /// Map a key event to an `Action`, decoupled from `AppState` so the keymap
@@ -49,6 +52,9 @@ pub fn map_key(key: KeyEvent) -> Option<Action> {
         (KeyCode::Esc, _) => Some(Action::ClearSearch),
         (KeyCode::Char('h'), _) | (KeyCode::Char('H'), _) => Some(Action::ToggleHelp),
         (KeyCode::Char('F'), _) => Some(Action::Follow),
+        (KeyCode::Char('a'), _) => Some(Action::ToggleAutoScroll),
+        (KeyCode::Char('+'), _) | (KeyCode::Char('='), _) => Some(Action::AutoScrollFaster),
+        (KeyCode::Char('-'), _) => Some(Action::AutoScrollSlower),
         _ => None,
     }
 }

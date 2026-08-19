@@ -30,6 +30,12 @@ Search
 Follow
   F                   jump to end and follow appended content
 
+Auto-scroll (teleprompter)
+  a                   toggle auto-scroll
+  + / -               speed up / slow down
+  Up / Down           while auto-scrolling: also nudges speed
+                      down / up (in addition to moving a line)
+
 Other
   Ctrl-L / r          force redraw
   h / H               toggle this help
@@ -146,7 +152,13 @@ fn draw_status(frame: &mut Frame, app: &AppState, area: Rect, text_area: Rect) {
         } else {
             format!("{pct}%")
         };
-        format!(" {}  ({})", app.filename, pos)
+        let auto = if app.auto_scroll {
+            let lines_per_sec = 1000.0 / app.auto_scroll_interval.as_millis().max(1) as f64;
+            format!("  [AUTO {lines_per_sec:.1}/s]")
+        } else {
+            String::new()
+        };
+        format!(" {}  ({}){}", app.filename, pos, auto)
     };
     let style = Style::default().bg(Color::DarkGray).fg(Color::White);
     let line = Line::from(Span::styled(text, style));

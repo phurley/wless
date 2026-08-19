@@ -13,8 +13,10 @@ use clap::{ArgAction, Parser};
 use crossterm::event::{self, Event};
 use document::Document;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use terminal::TerminalGuard;
+
+const BASE_POLL_TIMEOUT: Duration = Duration::from_millis(150);
 
 /// wless -- a word-wrapping, auto-following pager.
 #[derive(Parser)]
@@ -47,7 +49,13 @@ fn main() -> anyhow::Result<()> {
             guard.terminal.draw(|f| render::draw(f, &app))?;
             app.dirty = false;
         }
-        if event::poll(Duration::from_millis(150))? {
+        let timeout = match app.auto_scroll_wake_deadline() {
+            Some(deadline) => deadline
+                .saturating_duration_since(Instant::now())
+                .min(BASE_POLL_TIMEOUT),
+            None => BASE_POLL_TIMEOUT,
+        };
+        if event::poll(timeout)? {
             match event::read()? {
                 Event::Key(key) => match app.input_mode {
                     InputMode::Help => app.close_help(),
@@ -64,6 +72,9 @@ fn main() -> anyhow::Result<()> {
         }
         while watcher.rx.try_recv().is_ok() {
             app.handle_file_changed();
+        }
+        while app.auto_scroll_due(Instant::now()) {
+            app.auto_scroll_tick();
         }
     }
 
