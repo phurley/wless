@@ -35,6 +35,7 @@ cargo install --path .
 
 ```sh
 wless <file>
+wless -a <file>   # start with auto-scroll already running
 ```
 
 ## Keybindings
@@ -71,6 +72,11 @@ to the running pace instead of feeling disconnected from it. Reaching the
 current end of file while auto-scrolling hands off to follow mode, so it
 keeps riding newly appended content.
 
+Auto-scroll pauses (without turning off) while the search prompt or the
+help overlay is open, so it can't scroll the view out from under you
+while you type -- searching with `/`/`?`/`n`/`N` while auto-scrolling
+just jumps to the match and picks the pace back up from there.
+
 ## Design notes
 
 - Files are assumed to always fit comfortably in memory (even a
@@ -86,11 +92,13 @@ keeps riding newly appended content.
 
 ## Persisted settings
 
-Search history and the last-used auto-scroll speed are saved to
+Search history, the last-used auto-scroll speed, and the last-viewed line
+of up to 50 recently-opened files are saved to
 `~/.config/wless/config.toml` on exit and reloaded on the next run.
-Session-specific state -- which file is open, scroll position, and whether
-follow/auto-scroll happen to be on -- is not persisted; every run starts
-in plain view mode.
+Reopening a file jumps back to where you left off if -- and only if --
+it's given by the exact same path string as before (no canonicalization
+or symlink resolution). Whether follow/auto-scroll happen to be on is not
+persisted; every run starts in plain view mode.
 
 ## Building and testing locally
 

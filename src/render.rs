@@ -35,6 +35,7 @@ Auto-scroll (teleprompter)
   + / -               speed up / slow down
   Up / Down           while auto-scrolling: also nudges speed
                       down / up (in addition to moving a line)
+                      searching jumps to the match, then resumes
 
 Other
   Ctrl-L / r          force redraw

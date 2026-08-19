@@ -53,6 +53,10 @@ pub struct AppState {
     pub auto_scroll: bool,
     pub auto_scroll_interval: Duration,
     auto_scroll_next_tick: Instant,
+    /// Recent-file entries for files other than the one currently open,
+    /// carried forward from the loaded config so saving doesn't clobber
+    /// their remembered positions with just this session's own file.
+    other_recent_files: Vec<crate::config::RecentFile>,
 }
 
 impl AppState {
@@ -81,13 +85,15 @@ impl AppState {
             auto_scroll: false,
             auto_scroll_interval: AUTO_SCROLL_DEFAULT_INTERVAL,
             auto_scroll_next_tick: Instant::now(),
+            other_recent_files: Vec::new(),
         }
     }
 
-    /// Apply persisted settings loaded from the config file. Deliberately
-    /// leaves session-specific state (scroll position, whether auto-scroll
-    /// or follow are currently on) untouched -- only search history and
-    /// the last-used auto-scroll speed carry over between runs.
+    /// Apply persisted settings loaded from the config file: search
+    /// history, the last-used auto-scroll speed, and -- if this exact
+    /// path was seen before -- jumping to its last-viewed line. Anything
+    /// else session-specific (whether auto-scroll or follow are currently
+    /// on) is left untouched.
     pub fn apply_config(&mut self, config: &crate::config::Config) {
         self.search_history = config.search_history.clone();
         // Keep the most recent entries (the tail) if the file has more
@@ -100,13 +106,37 @@ impl AppState {
         self.auto_scroll_interval = config
             .auto_scroll_interval()
             .clamp(AUTO_SCROLL_MIN_INTERVAL, AUTO_SCROLL_MAX_INTERVAL);
+
+        self.other_recent_files = config
+            .recent_files
+            .iter()
+            .filter(|rf| rf.path != self.path)
+            .cloned()
+            .collect();
+        if let Some(line) = config.line_for(&self.path) {
+            self.anchor = ScrollAnchor {
+                line_idx: line.min(self.document.last_line_index()),
+                sub_row: 0,
+            };
+        }
     }
 
     /// Snapshot the settings worth persisting, for saving on exit.
     pub fn to_config(&self) -> crate::config::Config {
+        let mut recent_files = self.other_recent_files.clone();
+        recent_files.push(crate::config::RecentFile {
+            path: self.path.clone(),
+            line: self.anchor.line_idx,
+        });
+        let excess = recent_files
+            .len()
+            .saturating_sub(crate::config::MAX_RECENT_FILES);
+        recent_files.drain(..excess);
+
         crate::config::Config {
             search_history: self.search_history.clone(),
             auto_scroll_interval_ms: self.auto_scroll_interval.as_millis() as u64,
+            recent_files,
         }
     }
 
@@ -181,15 +211,22 @@ impl AppState {
                 self.anchor = view::goto_bottom(&self.document, self.width, self.text_height());
             }
             Action::ToggleAutoScroll => {
-                self.auto_scroll = !self.auto_scroll;
-                if self.auto_scroll {
-                    self.schedule_next_auto_scroll_tick();
-                }
+                let on = !self.auto_scroll;
+                self.set_auto_scroll(on);
             }
             Action::AutoScrollFaster => self.adjust_auto_scroll_speed(true),
             Action::AutoScrollSlower => self.adjust_auto_scroll_speed(false),
         }
         self.dirty = true;
+    }
+
+    /// Turn auto-scroll on or off, e.g. from the `a` key or the
+    /// `--auto-scroll` startup flag.
+    pub fn set_auto_scroll(&mut self, on: bool) {
+        self.auto_scroll = on;
+        if on {
+            self.schedule_next_auto_scroll_tick();
+        }
     }
 
     fn adjust_auto_scroll_speed(&mut self, faster: bool) {
@@ -210,17 +247,30 @@ impl AppState {
         self.auto_scroll_next_tick = Instant::now() + self.auto_scroll_interval;
     }
 
+    /// Auto-scroll only actually ticks while in Normal mode -- while a
+    /// search prompt or the help overlay is open it stays logically "on"
+    /// (the flag and speed are untouched), but pauses so the view doesn't
+    /// silently scroll out from under whatever you're doing. It resumes
+    /// from wherever you land the moment you're back to Normal mode (see
+    /// `schedule_next_auto_scroll_tick` calls on returning from those
+    /// modes), rather than firing a burst of catch-up ticks for the time
+    /// spent paused.
+    fn auto_scroll_active(&self) -> bool {
+        self.auto_scroll && matches!(self.input_mode, InputMode::Normal)
+    }
+
     /// Whether the auto-scroll timer has elapsed and it's time to advance
     /// one line. Called from the main loop each iteration.
     pub fn auto_scroll_due(&self, now: Instant) -> bool {
-        self.auto_scroll && now >= self.auto_scroll_next_tick
+        self.auto_scroll_active() && now >= self.auto_scroll_next_tick
     }
 
     /// How long until the next auto-scroll tick, for the main loop to use
     /// as its event-poll timeout so ticks stay punctual. `None` when
-    /// auto-scroll is off.
+    /// auto-scroll is off or paused.
     pub fn auto_scroll_wake_deadline(&self) -> Option<Instant> {
-        self.auto_scroll.then_some(self.auto_scroll_next_tick)
+        self.auto_scroll_active()
+            .then_some(self.auto_scroll_next_tick)
     }
 
     /// Advance one line and reschedule. Once this reaches the current end
@@ -277,6 +327,7 @@ impl AppState {
     /// Any key press while the help overlay is showing closes it.
     pub fn close_help(&mut self) {
         self.input_mode = InputMode::Normal;
+        self.schedule_next_auto_scroll_tick();
         self.dirty = true;
     }
 
@@ -288,11 +339,13 @@ impl AppState {
         match key.code {
             KeyCode::Esc => {
                 self.input_mode = InputMode::Normal;
+                self.schedule_next_auto_scroll_tick();
             }
             KeyCode::Enter => {
                 let direction = state.direction;
                 let pattern = std::mem::take(&mut state.query);
                 self.input_mode = InputMode::Normal;
+                self.schedule_next_auto_scroll_tick();
                 self.submit_search(direction, &pattern);
             }
             KeyCode::Backspace => {

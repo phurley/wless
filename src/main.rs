@@ -26,6 +26,10 @@ struct Cli {
     /// File to view.
     file: PathBuf,
 
+    /// Start with auto-scroll (teleprompter mode) already running.
+    #[arg(short = 'a', long = "auto-scroll")]
+    auto_scroll: bool,
+
     /// Print version information.
     #[arg(short = 'v', long = "version", action = ArgAction::Version)]
     version: (),
@@ -47,6 +51,9 @@ fn main() -> anyhow::Result<()> {
     let size = guard.terminal.size()?;
     let mut app = AppState::new(document, cli.file, filename, size.width, size.height);
     app.apply_config(&config);
+    if cli.auto_scroll {
+        app.set_auto_scroll(true);
+    }
 
     while !app.should_quit {
         if app.dirty {
