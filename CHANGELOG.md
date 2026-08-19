@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-08-19
+
+### Added
+
+- Very limited markdown styling: `# Header` lines rendered bold,
+  `**bold**`/`__bold__` and `*italic*`/`_italic_` spans (bold takes
+  priority when they overlap), and the leading marker of bullet
+  (`-`/`*`/`+`) and numbered (`1.`) list items rendered bold. This is
+  purely a display-layer rendering concern -- no markdown punctuation is
+  ever stripped, and line length / word-wrapping is completely
+  unaffected. Auto-enabled for `.md`/`.markdown` files; `m` toggles it for
+  the current file, and the choice is remembered per file the same way
+  the last-viewed line already is.
+
 ## [1.2.0] - 2026-08-19
 
 ### Added

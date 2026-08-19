@@ -61,6 +61,13 @@ pub struct AppState {
     pub ignore_case: bool,
     ignore_case_override: Option<bool>,
     pub theme: crate::config::Theme,
+    /// Whether markdown styling is currently applied to the rendered text.
+    pub markdown_enabled: bool,
+    /// The explicit per-file override to persist, if the user has toggled
+    /// markdown styling (`m`) this session -- `None` means this file's
+    /// `markdown_enabled` is still just following extension auto-detection,
+    /// so it should keep doing so on future opens too.
+    markdown_override: Option<bool>,
     /// Recent-file entries for files other than the one currently open,
     /// carried forward from the loaded config so saving doesn't clobber
     /// their remembered positions with just this session's own file.
@@ -75,6 +82,7 @@ impl AppState {
         width: u16,
         height: u16,
     ) -> Self {
+        let markdown_enabled = crate::markdown::detect_by_extension(&path);
         AppState {
             document,
             path,
@@ -96,6 +104,8 @@ impl AppState {
             ignore_case: true,
             ignore_case_override: None,
             theme: crate::config::Theme::default(),
+            markdown_enabled,
+            markdown_override: None,
             other_recent_files: Vec::new(),
         }
     }
@@ -136,6 +146,10 @@ impl AppState {
             self.ignore_case = ignore_case;
             self.ignore_case_override = Some(ignore_case);
         }
+        if let Some(md) = config.markdown_for(&self.path) {
+            self.markdown_enabled = md;
+            self.markdown_override = Some(md);
+        }
     }
 
     /// Snapshot the settings worth persisting, for saving on exit.
@@ -145,6 +159,7 @@ impl AppState {
             path: self.path.clone(),
             line: self.anchor.line_idx,
             ignore_case: self.ignore_case_override,
+            markdown: self.markdown_override,
         });
         let excess = recent_files
             .len()
@@ -252,6 +267,18 @@ impl AppState {
                 } else {
                     "Case-sensitive search".to_string()
                 });
+            }
+            Action::ToggleMarkdown => {
+                self.markdown_enabled = !self.markdown_enabled;
+                self.markdown_override = Some(self.markdown_enabled);
+                self.status_message = Some(
+                    if self.markdown_enabled {
+                        "Markdown styling on"
+                    } else {
+                        "Markdown styling off"
+                    }
+                    .to_string(),
+                );
             }
         }
         self.dirty = true;

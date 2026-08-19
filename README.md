@@ -62,6 +62,7 @@ wless -f <file>   # start already following, like tail -f
 | `F`                     | jump to end and follow file changes |
 | `a`                     | toggle auto-scroll (teleprompter)   |
 | `+` / `-`               | auto-scroll speed up / down         |
+| `m`                     | toggle markdown styling             |
 | `Ctrl-L` / `r`          | force redraw                        |
 | `h` / `H`               | toggle help overlay                 |
 | `q`                     | quit                                |
@@ -87,6 +88,24 @@ common case uncluttered). The choice is remembered per file, the same way
 last-viewed position is (see Persisted settings below) -- toggling it for
 one file doesn't affect any other file's default.
 
+## Markdown styling
+
+`wless` can apply very limited terminal styling on top of markdown text --
+purely visual, layered on the literal, unmodified line text: no punctuation
+(`**`, `#`, `-`, etc.) is ever stripped, and line length / word-wrapping is
+completely unaffected. In scope: `# Header` lines rendered bold,
+`**bold**`/`__bold__` and `*italic*`/`_italic_` spans (bold takes priority
+over italic), and the leading marker of bullet (`-`/`*`/`+`) and numbered
+(`1.`) list items rendered bold. Nothing else -- no code spans, blockquotes,
+links, or nested emphasis.
+
+Styling is auto-enabled for files with a `.md` or `.markdown` extension
+(case-insensitive) and off otherwise. Press `m` to toggle it for the
+currently-open file; your choice is remembered per file (the same exact
+path-string matching used for the last-viewed-line memory above), so a
+`.md` file you've never explicitly toggled keeps following extension
+auto-detection forever, while one you have toggled stays at your choice.
+
 ## Design notes
 
 - Files are assumed to always fit comfortably in memory (even a
@@ -106,12 +125,13 @@ one file doesn't affect any other file's default.
 ## Persisted settings
 
 Search history, the last-used auto-scroll speed, and (per file) the
-last-viewed line and case-sensitivity choice of up to 50 recently-opened
-files are saved to `~/.config/wless/config.toml` on exit and reloaded on
-the next run. Reopening a file restores its remembered state if -- and
-only if -- it's given by the exact same path string as before (no
-canonicalization or symlink resolution). Whether follow/auto-scroll
-happen to be on is not persisted; every run starts in plain view mode.
+last-viewed line, case-sensitivity choice, and markdown-styling choice
+(if you've ever toggled it with `m`) of up to 50 recently-opened files are
+saved to `~/.config/wless/config.toml` on exit and reloaded on the next
+run. Reopening a file restores its remembered state if -- and only if --
+it's given by the exact same path string as before (no canonicalization
+or symlink resolution). Whether follow/auto-scroll happen to be on is not
+persisted; every run starts in plain view mode.
 
 ### Theme
 

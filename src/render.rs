@@ -1,4 +1,5 @@
 use crate::app::{AppState, InputMode};
+use crate::markdown::{self, MdKind};
 use crate::search;
 use crate::view::visible_rows;
 use ratatui::Frame;
@@ -6,6 +7,11 @@ use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use std::ops::Range;
+
+/// Per-logical-line memo of computed markdown spans: which line they were
+/// computed for, and the spans themselves.
+type MdMemo = Option<(usize, Vec<(Range<usize>, MdKind)>)>;
 
 const HELP_TEXT: &str = "\
 wless -- word-wrapping, auto-following pager
@@ -38,6 +44,13 @@ Auto-scroll (teleprompter)
                       down / up (in addition to moving a line)
                       searching jumps to the match, then resumes
 
+Markdown
+  m                   toggle markdown styling (bold/italic only --
+                      punctuation stays on screen, nothing is
+                      stripped or rewrapped)
+                      auto-enabled for .md/.markdown files; your
+                      choice is remembered per file
+
 Other
   Ctrl-L / r          force redraw
   h / H               toggle this help
@@ -63,17 +76,50 @@ fn draw_text(frame: &mut Frame, app: &AppState, area: Rect) {
     let match_style = Style::default()
         .bg(app.theme.search_match_bg)
         .fg(app.theme.search_match_fg);
+
+    // A wrapped line's markdown spans and search matches are identical
+    // across all of its visual rows, so each is only recomputed when the
+    // logical line actually changes -- `visible_rows` always emits one
+    // line's rows contiguously, so a single "last computed for" memo is
+    // enough.
+    let mut md_memo: MdMemo = None;
+    let mut search_memo: Option<(usize, Vec<Range<usize>>)> = None;
+
     let lines: Vec<Line> = rows
         .iter()
         .map(|r| {
             let text = app.document.line_text(r.line_idx);
-            match &app.last_pattern {
-                Some(re) => {
-                    let matches = search::find_all_in_line(re, app.document.line_bytes(r.line_idx));
-                    highlighted_line(&text, r.row.start, r.row.end, &matches, match_style)
+
+            let md_spans: &[(Range<usize>, MdKind)] = if app.markdown_enabled {
+                if md_memo.as_ref().map(|(idx, _)| *idx) != Some(r.line_idx) {
+                    md_memo = Some((r.line_idx, markdown::markdown_spans(&text)));
                 }
-                None => Line::from(text[r.row.start..r.row.end].to_string()),
-            }
+                &md_memo.as_ref().unwrap().1
+            } else {
+                &[]
+            };
+
+            let search_matches: &[Range<usize>] = match &app.last_pattern {
+                Some(re) => {
+                    if search_memo.as_ref().map(|(idx, _)| *idx) != Some(r.line_idx) {
+                        search_memo = Some((
+                            r.line_idx,
+                            search::find_all_in_line(re, app.document.line_bytes(r.line_idx)),
+                        ));
+                    }
+                    &search_memo.as_ref().unwrap().1
+                }
+                None => &[],
+            };
+
+            styled_line(
+                &text,
+                r.row.start,
+                r.row.end,
+                md_spans,
+                search_matches,
+                match_style,
+            )
         })
         .collect();
     frame.render_widget(Paragraph::new(lines).block(Block::default()), area);
@@ -100,36 +146,88 @@ fn ceil_boundary(text: &str, idx: usize) -> usize {
     idx
 }
 
-/// Build a `Line` for one visual row (`text[row_start..row_end]`), splitting
-/// it into styled spans wherever a search match (byte range relative to the
-/// full logical line) overlaps this row.
-fn highlighted_line(
+/// The terminal styling for one kind of "very limited" markdown span. Only
+/// sets the BOLD/ITALIC modifier -- disjoint from the search layer's bg/fg,
+/// so the two combine cleanly via `Style::patch` regardless of merge order.
+fn markdown_style(kind: MdKind) -> Style {
+    match kind {
+        MdKind::Header | MdKind::Bold | MdKind::Marker => {
+            Style::default().add_modifier(Modifier::BOLD)
+        }
+        MdKind::Italic => Style::default().add_modifier(Modifier::ITALIC),
+    }
+}
+
+/// Build a `Line` for one visual row (`text[row_start..row_end]`), merging
+/// two style layers -- markdown spans and search matches, both given as
+/// byte ranges relative to the full logical line -- into one set of
+/// non-overlapping spans. Overlapping regions from both layers combine
+/// (e.g. a bold word that's also a search hit shows bold text on a
+/// highlighted background) via a boundary-point sweep: every layer range's
+/// start/end becomes a cut point, and each resulting sub-interval folds
+/// together (`Style::patch`) every layer range that fully covers it.
+///
+/// Markdown ranges come from a str-based regex on the already-lossily-
+/// decoded line text, so they're guaranteed to land on char boundaries and
+/// only need row-clipping. Search ranges come from `regex::bytes::Regex`
+/// matches, which are not guaranteed char-boundary-aligned, so they still
+/// need the `floor_boundary`/`ceil_boundary` snapping below.
+fn styled_line(
     text: &str,
     row_start: usize,
     row_end: usize,
-    matches: &[std::ops::Range<usize>],
-    match_style: Style,
+    md_spans: &[(std::ops::Range<usize>, MdKind)],
+    search_matches: &[std::ops::Range<usize>],
+    search_style: Style,
 ) -> Line<'static> {
-    let mut spans = Vec::new();
-    let mut pos = row_start;
+    let mut layers: Vec<(std::ops::Range<usize>, Style)> = Vec::new();
+    for (r, kind) in md_spans {
+        let start = r.start.max(row_start);
+        let end = r.end.min(row_end);
+        if start < end {
+            layers.push((start..end, markdown_style(*kind)));
+        }
+    }
+    for m in search_matches {
+        let start = ceil_boundary(text, m.start.max(row_start));
+        let end = floor_boundary(text, m.end.min(row_end));
+        if start < end {
+            layers.push((start..end, search_style));
+        }
+    }
 
-    for m in matches {
-        let seg_start = ceil_boundary(text, m.start.max(row_start));
-        let seg_end = floor_boundary(text, m.end.min(row_end));
-        if seg_start >= seg_end || seg_start < pos {
+    if layers.is_empty() {
+        return Line::from(text[row_start..row_end].to_string());
+    }
+
+    let mut boundaries: Vec<usize> = vec![row_start, row_end];
+    for (r, _) in &layers {
+        boundaries.push(r.start);
+        boundaries.push(r.end);
+    }
+    boundaries.sort_unstable();
+    boundaries.dedup();
+
+    let mut spans = Vec::new();
+    for w in boundaries.windows(2) {
+        let (seg_start, seg_end) = (w[0], w[1]);
+        if seg_start >= seg_end {
             continue;
         }
-        if seg_start > pos {
-            spans.push(Span::raw(text[pos..seg_start].to_string()));
+        let mut style = Style::default();
+        let mut any = false;
+        for (r, s) in &layers {
+            if r.start <= seg_start && seg_end <= r.end {
+                style = style.patch(*s);
+                any = true;
+            }
         }
-        spans.push(Span::styled(
-            text[seg_start..seg_end].to_string(),
-            match_style,
-        ));
-        pos = seg_end;
-    }
-    if pos < row_end {
-        spans.push(Span::raw(text[pos..row_end].to_string()));
+        let segment = text[seg_start..seg_end].to_string();
+        spans.push(if any {
+            Span::styled(segment, style)
+        } else {
+            Span::raw(segment)
+        });
     }
     Line::from(spans)
 }

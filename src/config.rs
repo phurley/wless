@@ -73,6 +73,11 @@ pub struct RecentFile {
     /// (case-insensitive) rather than locking to a remembered choice.
     #[serde(default)]
     pub ignore_case: Option<bool>,
+    /// Explicit per-file markdown-styling override, if the user has ever
+    /// toggled it (`m`) for this path -- `None` means it should keep
+    /// following extension auto-detection.
+    #[serde(default)]
+    pub markdown: Option<bool>,
 }
 
 /// Settings persisted across runs in `~/.config/wless/config.toml`:
@@ -148,6 +153,15 @@ impl Config {
             .iter()
             .find(|rf| rf.path == path)
             .and_then(|rf| rf.ignore_case)
+    }
+
+    /// The explicit markdown-styling override for `path`, if the user has
+    /// ever toggled it for that exact path string.
+    pub fn markdown_for(&self, path: &std::path::Path) -> Option<bool> {
+        self.recent_files
+            .iter()
+            .find(|rf| rf.path == path)
+            .and_then(|rf| rf.markdown)
     }
 
     /// Best-effort save: a read-only home directory or similar shouldn't
