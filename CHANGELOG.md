@@ -5,6 +5,25 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-08-19
+
+### Fixed
+
+- Follow mode (`F`) could silently never pick up new content: it relied
+  on OS-level file-change notifications (`notify`), which turned out to
+  be unreliable in practice on at least one real setup -- a concurrent
+  `tail -f` on the same file saw appends immediately while wless saw
+  nothing. Replaced with the same strategy `tail -f` itself falls back
+  to: polling the file's size directly (a single cheap `stat()` call
+  when nothing changed) roughly every 150ms. This also removes the
+  `notify`/`notify-debouncer-full` dependencies entirely.
+- Scrolling down (manually, or via auto-scroll) within one screenful of
+  the end of file kept advancing the file's last line up past the bottom
+  row, leaving a growing wall of blank lines below it instead of
+  stopping like a normal pager -- most visible as auto-scroll appearing
+  to "scroll into" empty space at the end of a file rather than stopping
+  cleanly at the last line.
+
 ## [1.0.0] - 2026-08-19
 
 ### Added

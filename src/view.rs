@@ -77,10 +77,17 @@ pub fn sub_row_for_offset(
     0
 }
 
+/// Scroll down `n` lines, clamped so the file's last line can never be
+/// pushed past the bottom row of the screen -- otherwise, once within one
+/// screenful of EOF, continuing to scroll down (as auto-scroll does
+/// continuously) would keep dragging the last line up toward the top,
+/// leaving a growing wall of blank rows below it instead of just stopping
+/// like a normal pager.
 pub fn scroll_down_lines(
     doc: &Document,
     anchor: ScrollAnchor,
     width: u16,
+    height: u16,
     n: usize,
 ) -> ScrollAnchor {
     let mut line_idx = anchor.line_idx;
@@ -98,7 +105,13 @@ pub fn scroll_down_lines(
             break;
         }
     }
-    ScrollAnchor { line_idx, sub_row }
+    let candidate = ScrollAnchor { line_idx, sub_row };
+    let max = goto_bottom(doc, width, height);
+    if (candidate.line_idx, candidate.sub_row) > (max.line_idx, max.sub_row) {
+        max
+    } else {
+        candidate
+    }
 }
 
 pub fn scroll_up_lines(doc: &Document, anchor: ScrollAnchor, width: u16, n: usize) -> ScrollAnchor {
@@ -120,7 +133,7 @@ pub fn scroll_up_lines(doc: &Document, anchor: ScrollAnchor, width: u16, n: usiz
 
 pub fn page_down(doc: &Document, anchor: ScrollAnchor, width: u16, height: u16) -> ScrollAnchor {
     let n = (height as usize).saturating_sub(1).max(1);
-    scroll_down_lines(doc, anchor, width, n)
+    scroll_down_lines(doc, anchor, width, height, n)
 }
 
 pub fn page_up(doc: &Document, anchor: ScrollAnchor, width: u16, height: u16) -> ScrollAnchor {

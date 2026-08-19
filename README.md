@@ -8,8 +8,10 @@ from `less`:
 - **Reflows on resize** without losing your place: scroll position is
   tracked as a location in the file, not a screen row, so resizing the
   terminal keeps the same line pinned at the top.
-- **Follows file changes** (`F`), like `tail -f` / `less +F`, watching the
-  file on disk via [`notify`](https://docs.rs/notify) rather than polling.
+- **Follows file changes** (`F`), like `tail -f` / `less +F`, by polling
+  the file's size roughly every 150ms -- deliberately not OS-level file
+  change notifications, which proved unreliable in practice on at least
+  one real setup.
 
 It only views one file at a time, given as a path -- no stdin support.
 
@@ -83,10 +85,13 @@ just jumps to the match and picks the pace back up from there.
   continuously-growing log file), so `wless` reads the whole file up front
   and builds a complete line index in one pass -- no lazy/partial indexing.
   Jumping to an arbitrary line number is intentionally not supported.
-- Follow mode re-reads only the appended tail bytes on each file-change
-  notification (not the whole file), extending the line index incrementally.
+- Follow mode re-reads only the appended tail bytes on each detected
+  change (not the whole file), extending the line index incrementally.
   A shrunk or rotated file (different inode/file id, or a smaller size) is
-  detected and triggers a full reload instead.
+  detected and triggers a full reload instead. Detection is a cheap
+  `stat()`-based size check every ~150ms, not OS file-change
+  notifications -- simpler, and can't silently fail to fire the way those
+  did on at least one real machine.
 - Search uses `regex::bytes::Regex` so it works correctly on non-UTF-8
   content without a decode step; displayed text is a lossy UTF-8 decode.
 

@@ -1,7 +1,6 @@
 mod app;
 mod config;
 mod document;
-mod follow;
 mod input;
 mod render;
 mod search;
@@ -17,6 +16,15 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use terminal::TerminalGuard;
 
+// How often to check whether the file has grown on disk, when nothing
+// else wakes the loop sooner. wless polls the file's size directly (via
+// Document::refresh_append, which is a single cheap stat() call when
+// nothing changed) rather than relying on OS-level file-change
+// notifications: those turned out to be unreliable in practice on at
+// least one real setup, where appends were never noticed even though a
+// concurrent `tail -f` on the same file saw them immediately. `tail -f`
+// itself falls back to polling for exactly this reason, so wless does
+// too -- 150ms is imperceptible for a human watching a log scroll by.
 const BASE_POLL_TIMEOUT: Duration = Duration::from_millis(150);
 
 /// wless -- a word-wrapping, auto-following pager.
@@ -43,7 +51,6 @@ fn main() -> anyhow::Result<()> {
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| cli.file.to_string_lossy().to_string());
-    let watcher = follow::watch(&cli.file)?;
 
     let config = config::Config::load();
 
@@ -81,9 +88,7 @@ fn main() -> anyhow::Result<()> {
                 _ => {}
             }
         }
-        while watcher.rx.try_recv().is_ok() {
-            app.handle_file_changed();
-        }
+        app.handle_file_changed();
         while app.auto_scroll_due(Instant::now()) {
             app.auto_scroll_tick();
         }

@@ -149,7 +149,13 @@ impl AppState {
         match action {
             Action::Quit => self.should_quit = true,
             Action::LineDown => {
-                self.anchor = view::scroll_down_lines(&self.document, self.anchor, self.width, 1);
+                self.anchor = view::scroll_down_lines(
+                    &self.document,
+                    self.anchor,
+                    self.width,
+                    self.text_height(),
+                    1,
+                );
                 // While auto-scrolling, Up/Down double as speed nudges: Down
                 // both advances a line and speeds the pace up, Up both backs
                 // up a line and eases it back down -- an explicit request,
@@ -177,7 +183,13 @@ impl AppState {
             }
             Action::HalfPageDown => {
                 let n = (self.text_height() as usize / 2).max(1);
-                self.anchor = view::scroll_down_lines(&self.document, self.anchor, self.width, n)
+                self.anchor = view::scroll_down_lines(
+                    &self.document,
+                    self.anchor,
+                    self.width,
+                    self.text_height(),
+                    n,
+                )
             }
             Action::HalfPageUp => {
                 self.following = false;
@@ -279,7 +291,13 @@ impl AppState {
     /// know about future appends, but follow mode is driven by file-change
     /// events instead, so it picks up seamlessly.
     pub fn auto_scroll_tick(&mut self) {
-        self.anchor = view::scroll_down_lines(&self.document, self.anchor, self.width, 1);
+        self.anchor = view::scroll_down_lines(
+            &self.document,
+            self.anchor,
+            self.width,
+            self.text_height(),
+            1,
+        );
         if view::is_at_bottom(&self.document, self.anchor, self.width, self.text_height()) {
             self.following = true;
         }
@@ -287,22 +305,26 @@ impl AppState {
         self.dirty = true;
     }
 
-    /// Called when the file-watcher reports the file changed on disk.
-    /// Re-reads the appended tail (or fully reloads on rotation/
-    /// truncation), and if we're following, keeps the view pinned to the
-    /// new end of file.
+    /// Called every iteration of the main loop to check whether the file
+    /// has grown or been replaced on disk (a single cheap stat() call via
+    /// Document::refresh_append when nothing changed, so polling this
+    /// unconditionally rather than only on an OS file-change notification
+    /// is inexpensive -- and unlike OS notifications, it can't silently
+    /// fail to fire). Re-reads the appended tail (or fully reloads on
+    /// rotation/truncation), and if we're following, keeps the view
+    /// pinned to the new end of file.
     pub fn handle_file_changed(&mut self) {
-        let outcome = self.document.refresh_append(&self.path);
-        match outcome {
+        match self.document.refresh_append(&self.path) {
+            Ok(RefreshOutcome::Unchanged) => return,
             Ok(RefreshOutcome::NeedsReload) => {
-                let _ = self.document.reload(&self.path);
+                if self.document.reload(&self.path).is_err() {
+                    // Transiently unavailable (e.g. mid-rotate); try again
+                    // on the next poll.
+                    return;
+                }
             }
-            Ok(_) => {}
-            Err(_) => {
-                // The file may be transiently unavailable (e.g. mid-rotate);
-                // just skip this update and try again on the next event.
-                return;
-            }
+            Ok(RefreshOutcome::Appended) => {}
+            Err(_) => return,
         }
         if self.following {
             self.anchor = view::goto_bottom(&self.document, self.width, self.text_height());
