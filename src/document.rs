@@ -1,38 +1,7 @@
+use same_file::Handle;
 use std::fs;
 use std::ops::Range;
 use std::path::Path;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FileIdentity {
-    #[cfg(unix)]
-    dev: u64,
-    #[cfg(unix)]
-    ino: u64,
-    #[cfg(windows)]
-    volume: u32,
-    #[cfg(windows)]
-    file_index: u64,
-}
-
-impl FileIdentity {
-    #[cfg(unix)]
-    fn from_metadata(meta: &fs::Metadata) -> Self {
-        use std::os::unix::fs::MetadataExt;
-        FileIdentity {
-            dev: meta.dev(),
-            ino: meta.ino(),
-        }
-    }
-
-    #[cfg(windows)]
-    fn from_metadata(meta: &fs::Metadata) -> Self {
-        use std::os::windows::fs::MetadataExt;
-        FileIdentity {
-            volume: meta.volume_serial_number().unwrap_or(0),
-            file_index: meta.file_index().unwrap_or(0),
-        }
-    }
-}
 
 /// Whether the on-disk file grew in place, or was rotated/truncated and
 /// needs a full reload.
@@ -48,7 +17,7 @@ pub enum RefreshOutcome {
 pub struct Document {
     buf: Vec<u8>,
     line_starts: Vec<u64>,
-    file_id: FileIdentity,
+    file_id: Handle,
 }
 
 impl Document {
@@ -60,7 +29,7 @@ impl Document {
             path
         );
         let buf = fs::read(path)?;
-        let file_id = FileIdentity::from_metadata(&meta);
+        let file_id = Handle::from_path(path)?;
         let mut doc = Document {
             buf,
             line_starts: Vec::new(),
@@ -87,7 +56,7 @@ impl Document {
     /// shrank or its identity changed, indicating truncation/rotation).
     pub fn refresh_append(&mut self, path: &Path) -> anyhow::Result<RefreshOutcome> {
         let meta = fs::metadata(path)?;
-        let new_id = FileIdentity::from_metadata(&meta);
+        let new_id = Handle::from_path(path)?;
         let new_len = meta.len();
         let old_len = self.buf.len() as u64;
 
