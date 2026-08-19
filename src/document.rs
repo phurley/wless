@@ -1,0 +1,163 @@
+use std::fs;
+use std::ops::Range;
+use std::path::Path;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileIdentity {
+    dev: u64,
+    ino: u64,
+}
+
+impl FileIdentity {
+    fn from_metadata(meta: &fs::Metadata) -> Self {
+        use std::os::unix::fs::MetadataExt;
+        FileIdentity {
+            dev: meta.dev(),
+            ino: meta.ino(),
+        }
+    }
+}
+
+/// Whether the on-disk file grew in place, or was rotated/truncated and
+/// needs a full reload.
+#[allow(dead_code)] // wired up in the follow-mode milestone
+pub enum RefreshOutcome {
+    Unchanged,
+    Appended,
+    NeedsReload,
+}
+
+/// The full contents of the file we're viewing, held in memory, plus a
+/// complete index of logical line start offsets. Files are assumed to
+/// always fit comfortably in memory, so no lazy/partial indexing is needed.
+pub struct Document {
+    buf: Vec<u8>,
+    line_starts: Vec<u64>,
+    #[allow(dead_code)] // read by refresh_append/reload in the follow-mode milestone
+    file_id: FileIdentity,
+}
+
+impl Document {
+    pub fn open(path: &Path) -> anyhow::Result<Self> {
+        let meta = fs::metadata(path)?;
+        anyhow::ensure!(
+            meta.is_file(),
+            "wless can only view regular files, not {:?}",
+            path
+        );
+        let buf = fs::read(path)?;
+        let file_id = FileIdentity::from_metadata(&meta);
+        let mut doc = Document {
+            buf,
+            line_starts: Vec::new(),
+            file_id,
+        };
+        doc.rebuild_index();
+        Ok(doc)
+    }
+
+    fn rebuild_index(&mut self) {
+        self.line_starts.clear();
+        self.line_starts.push(0);
+        for pos in memchr::memchr_iter(b'\n', &self.buf) {
+            let next = pos as u64 + 1;
+            if next < self.buf.len() as u64 {
+                self.line_starts.push(next);
+            }
+        }
+    }
+
+    /// Re-read the file if it has grown on disk since we last read it,
+    /// appending only the new tail bytes and extending the index. Returns
+    /// `NeedsReload` if the caller should call `reload` instead (the file
+    /// shrank or its identity changed, indicating truncation/rotation).
+    #[allow(dead_code)] // wired up in the follow-mode milestone
+    pub fn refresh_append(&mut self, path: &Path) -> anyhow::Result<RefreshOutcome> {
+        let meta = fs::metadata(path)?;
+        let new_id = FileIdentity::from_metadata(&meta);
+        let new_len = meta.len();
+        let old_len = self.buf.len() as u64;
+
+        if new_id != self.file_id || new_len < old_len {
+            return Ok(RefreshOutcome::NeedsReload);
+        }
+        if new_len == old_len {
+            return Ok(RefreshOutcome::Unchanged);
+        }
+
+        use std::io::{Read, Seek, SeekFrom};
+        let mut f = fs::File::open(path)?;
+        f.seek(SeekFrom::Start(old_len))?;
+        let mut tail = Vec::with_capacity((new_len - old_len) as usize);
+        f.read_to_end(&mut tail)?;
+
+        // The previously-indexed region is guaranteed newline-free past the
+        // last recorded line start (otherwise it would already have been
+        // split), so it's enough to scan just the newly appended tail.
+        self.buf.extend_from_slice(&tail);
+        for pos in memchr::memchr_iter(b'\n', &tail) {
+            let next = old_len + pos as u64 + 1;
+            if next < self.buf.len() as u64 {
+                self.line_starts.push(next);
+            }
+        }
+
+        Ok(RefreshOutcome::Appended)
+    }
+
+    #[allow(dead_code)] // wired up in the follow-mode milestone
+    pub fn reload(&mut self, path: &Path) -> anyhow::Result<()> {
+        *self = Document::open(path)?;
+        Ok(())
+    }
+
+    pub fn len(&self) -> u64 {
+        self.buf.len() as u64
+    }
+
+    pub fn line_count(&self) -> usize {
+        self.line_starts.len()
+    }
+
+    pub fn line_span(&self, idx: usize) -> Range<u64> {
+        let start = self.line_starts[idx];
+        let end = self
+            .line_starts
+            .get(idx + 1)
+            .copied()
+            .unwrap_or(self.buf.len() as u64);
+        start..end
+    }
+
+    /// Bytes of a logical line, with any trailing `\n` (and `\r`) trimmed.
+    pub fn line_bytes(&self, idx: usize) -> &[u8] {
+        let span = self.line_span(idx);
+        let mut bytes = &self.buf[span.start as usize..span.end as usize];
+        if bytes.last() == Some(&b'\n') {
+            bytes = &bytes[..bytes.len() - 1];
+        }
+        if bytes.last() == Some(&b'\r') {
+            bytes = &bytes[..bytes.len() - 1];
+        }
+        bytes
+    }
+
+    pub fn line_text(&self, idx: usize) -> std::borrow::Cow<'_, str> {
+        String::from_utf8_lossy(self.line_bytes(idx))
+    }
+
+    pub fn line_offset(&self, idx: usize) -> u64 {
+        self.line_starts[idx]
+    }
+
+    #[allow(dead_code)] // wired up in the search milestone
+    pub fn line_index_for_offset(&self, offset: u64) -> usize {
+        self.line_starts
+            .partition_point(|&s| s <= offset)
+            .saturating_sub(1)
+    }
+
+    pub fn last_line_index(&self) -> usize {
+        self.line_count().saturating_sub(1)
+    }
+}
