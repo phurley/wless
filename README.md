@@ -1,5 +1,9 @@
 # wless
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/phurley/wless)](https://github.com/phurley/wless/releases/latest)
+[![Homebrew](https://img.shields.io/badge/homebrew-phurley%2Fwless-orange)](https://github.com/phurley/homebrew-wless)
+
 A `less`-like pager for the terminal, written in Rust, with three differences
 from `less`:
 
