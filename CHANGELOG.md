@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-09-28
+
+### Added
+
+- Mouse-wheel scrolling: one wheel notch scrolls three lines. Scrolling
+  up leaves follow mode; scrolling down keeps it, so the wheel can tail a
+  growing file from the bottom.
+
 ## [1.3.1] - 2026-08-19
 
 ### Added

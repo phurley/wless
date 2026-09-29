@@ -11,7 +11,7 @@ mod wrap;
 
 use app::{AppState, InputMode};
 use clap::{ArgAction, Parser};
-use crossterm::event::{self, Event};
+use crossterm::event::{self, Event, MouseEventKind};
 use document::Document;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -93,6 +93,15 @@ fn main() -> anyhow::Result<()> {
                     }
                 },
                 Event::Resize(w, h) => app.handle_resize(w, h),
+                Event::Mouse(mouse) => {
+                    if matches!(app.input_mode, InputMode::Normal) {
+                        match mouse.kind {
+                            MouseEventKind::ScrollUp => app.handle_mouse_scroll(false),
+                            MouseEventKind::ScrollDown => app.handle_mouse_scroll(true),
+                            _ => {}
+                        }
+                    }
+                }
                 _ => {}
             }
         }

@@ -62,6 +62,7 @@ wless -f <file>   # start already following, like tail -f
 | `Ctrl-D` / `Ctrl-U`     | half page down / up                 |
 | `g` / `Home`            | go to top                           |
 | `G` / `End`             | go to bottom                        |
+| mouse wheel             | scroll up / down                    |
 | `/`                     | search forward (regex)              |
 | `?`                     | search backward (regex)             |
 | Enter on empty prompt   | repeat the last search pattern      |

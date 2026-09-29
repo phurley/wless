@@ -17,6 +17,9 @@ pub const AUTO_SCROLL_DEFAULT_INTERVAL: Duration = Duration::from_millis(500);
 /// relative jump when fast and imperceptible when slow.
 const AUTO_SCROLL_STEP_FACTOR: f64 = 0.85;
 
+/// How many lines one mouse-wheel notch scrolls.
+const MOUSE_SCROLL_LINES: usize = 3;
+
 /// State of the search text-entry prompt (open via `/` or `?`).
 pub struct SearchInput {
     pub direction: Direction,
@@ -280,6 +283,31 @@ impl AppState {
                     .to_string(),
                 );
             }
+        }
+        self.dirty = true;
+    }
+
+    /// Handle a mouse-wheel notch. Scrolling up leaves follow mode (like
+    /// the Up key); scrolling down does not, so a wheel-down at the bottom
+    /// can keep tailing a growing file.
+    pub fn handle_mouse_scroll(&mut self, down: bool) {
+        self.status_message = None;
+        if down {
+            self.anchor = view::scroll_down_lines(
+                &self.document,
+                self.anchor,
+                self.width,
+                self.text_height(),
+                MOUSE_SCROLL_LINES,
+            );
+        } else {
+            self.following = false;
+            self.anchor = view::scroll_up_lines(
+                &self.document,
+                self.anchor,
+                self.width,
+                MOUSE_SCROLL_LINES,
+            );
         }
         self.dirty = true;
     }

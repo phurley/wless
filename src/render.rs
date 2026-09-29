@@ -24,6 +24,7 @@ Navigation
   Ctrl-D / Ctrl-U     half page down / up
   g / Home            go to top
   G / End             go to bottom
+  mouse wheel         scroll up / down
 
 Search
   /                   search forward (regex)
