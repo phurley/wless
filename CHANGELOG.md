@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mouse-wheel scrolling: one wheel notch scrolls three lines. Scrolling
   up leaves follow mode; scrolling down keeps it, so the wheel can tail a
   growing file from the bottom.
+- The most recent remembered search now works immediately at startup:
+  `n` / `N` repeat it without having to run a search in this session
+  first.
 
 ## [1.3.1] - 2026-08-19
 

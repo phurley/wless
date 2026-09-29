@@ -153,6 +153,20 @@ impl AppState {
             self.markdown_enabled = md;
             self.markdown_override = Some(md);
         }
+
+        // Make the most recent persisted search usable immediately, so
+        // n/N work right after startup instead of reporting "No previous
+        // search pattern" until the user runs a search this session. This
+        // is deliberately last: the case-sensitivity choice above is now
+        // applied, so the pattern compiles with the same flags it would
+        // have used when it was originally submitted. A manually-edited
+        // config could hold an invalid regex, so a compile failure is
+        // ignored rather than fatal.
+        if self.last_pattern.is_none()
+            && let Some(pattern) = self.search_history.last()
+        {
+            self.last_pattern = search::compile(pattern, self.ignore_case).ok();
+        }
     }
 
     /// Snapshot the settings worth persisting, for saving on exit.
