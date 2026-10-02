@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-10-02
+
+### Fixed
+
+- Word wrapping no longer moves a trailing period, comma, or closing quote
+  to the start of the next visual row; such punctuation now stays with the
+  word it follows.
+
 ## [1.4.0] - 2026-09-28
 
 ### Added
